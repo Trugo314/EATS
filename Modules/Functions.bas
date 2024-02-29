@@ -1,6 +1,50 @@
 Attribute VB_Name = "Functions"
 Option Explicit
 
+Function ConvertColumnToDay(ColumnNumber As Integer) As String
+    Select Case ColumnNumber
+    Case 4
+        ConvertColumnToDay = "Monday"
+    Case 5
+        ConvertColumnToDay = "Tuesday"
+    Case 6
+        ConvertColumnToDay = "Wednesday"
+    Case 7
+        ConvertColumnToDay = "Thursday"
+    Case 8
+        ConvertColumnToDay = "Friday"
+    Case 9
+        ConvertColumnToDay = "Saturday"
+    Case 10
+        ConvertColumnToDay = "Sunday"
+    Case Else
+        ErrWrite "Error with select case statement. No case matches " & ColumnNumber
+        End
+    End Select
+End Function
+
+Function ConvertDayToColumn(Day As String) As Integer
+    Select Case Day
+    Case "Monday"
+        ConvertDayToColumn = 4
+    Case "Tuesday"
+        ConvertDayToColumn = 5
+    Case "Wednesday"
+        ConvertDayToColumn = 6
+    Case "Thursday"
+        ConvertDayToColumn = 7
+    Case "Friday"
+        ConvertDayToColumn = 8
+    Case "Saturday"
+        ConvertDayToColumn = 9
+    Case "Sunday"
+        ConvertDayToColumn = 10
+    Case Else
+        ErrWrite "Error with select case statement. No case matches " & Day
+        End
+    End Select
+End Function
+
 Function ConvertTxtFileToStringArray(ByVal FilePath As String, ByVal Delimiter As String) As String()
     'Declare integers
     Dim fileNum As Integer
@@ -49,6 +93,10 @@ Public Function GetJobCount(SheetName As String) As Integer
     Loop Until ([CheckCell].Value = stEmpty)
     
     GetJobCount = Jobs
+End Function
+
+Public Function GetLastDataRow(SheetName As String, ColumnNum As Integer) As Integer
+    GetLastDataRow = Sheets(SheetName).Cells(Rows.Count, ColumnNum).End(xlUp).Row
 End Function
 
 Public Function GetUser()
