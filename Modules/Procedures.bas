@@ -324,7 +324,7 @@ Sub AddJob()
             "Would you like to update?", vbQuestion + vbYesNo, "Job Addition")
             
         If (resYesNo = vbYes) Then
-            UpdateSheet (intCurrentColumnNumber)
+            UpdateSheet
         End If
     End If
 End Sub

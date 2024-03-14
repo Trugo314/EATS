@@ -6,5 +6,6 @@ Sub UpdateButton_Clicked()
 End Sub
 
 Sub AddJobButton_Clicked()
+    InitDay
     AddJob
 End Sub
