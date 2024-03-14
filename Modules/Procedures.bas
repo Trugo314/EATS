@@ -1,50 +1,350 @@
 Attribute VB_Name = "Procedures"
 Option Explicit
+'Declare booleans
+Dim bUpdatingPreviousData As Boolean
 
-Sub CenterAlign(Sheet As String, Optional ColumnRange As String = "", Optional cell As Object = vbNull)
-    If (ColumnRange <> "") Then
-        Sheets(Sheet).Columns(ColumnRange).HorizontalAlignment = xlCenter
-        Sheets(Sheet).Columns(ColumnRange).AutoFit
-    ElseIf (cell <> vbNull) Then
-        cell.HorizontalAlignment = xlCenter
-    Else
-        ErrWrite "In subprocedure CenterAlign(): Argument ""ColumnRange"" or ""Cell"" is required!"
-        End
-    End If
+'Declare integers
+Dim intCurrentColumnNumber As Integer 'Integer that will always hold the column value of the current day
+Dim intJobCount As Integer
+Dim intLastJobRow As Integer
+Dim intWeekNum As Integer
+
+'Declare ranges
+Dim LastUpdateCell As Range
+
+'Declare strings
+Const stLogFileName As String = "programlog.txt"
+Const stSupportFilesDir As String = "Spreadsheets\EATS\Support Files\"
+Dim stEndTime As String
+Dim stDate As String
+Dim stDocumentsDir As String
+Dim stLastUpdateDate As String
+Dim stLogFilePath As String
+Dim stOptionEndTime As String
+Dim stStartTime As String
+Dim stToday As String
+Dim stUpdateTime As String
+
+'****************************
+'****************************
+'Sheet Sequencer Section
+'****************************
+'****************************
+
+Sub SheetSequencer()
+    ' 1.)Get info for today
+    ' 2.)Check previous days for valid data
+    ' 3.)Ask to update previous day
+    ' 4.)Shift data if necessary
+    ' 5.)Update today
+    
+    InitDay
+    ValidatePreviousDays
+    UpdateSheet
 End Sub
 
-Sub CheckSheet()
-     'Declare integers
-     Dim ColumnNumber As Integer
-     Dim WeekNumber As Integer
-     
-     Dim LastUpdateCell As Range
-     
-     'Declare strings
-     Dim stDate As String
-     Dim stEndTime As String
-     Dim stToday As String
-     Dim stUpdateTime As String
-
-    'Assignments
+Sub InitDay()
+    'Description: Initializes all data to be used for the current day.
+    'Also needed to reference previous days
+    
+    stDocumentsDir = GetDocumentsDir
+    stLogFilePath = stDocumentsDir & stSupportFilesDir & stLogFileName
+    
+    'Get information for the current day
     stToday = Format(Date, "dddd")
     stDate = Format(Date, "yyyy/mm/dd")
-    stEndTime = Format(Time, "hh:mm")
+    stEndTime = Format(Time, "hh:mm") 'This will be overridden if the clock out time option is not empty
     stUpdateTime = Format(Time, "hh:mm")
-    WeekNumber = WorksheetFunction.IsoWeekNum(Now)
+    intWeekNum = WorksheetFunction.IsoWeekNum(Now)
+    
+    intCurrentColumnNumber = ConvertDayToColumn(stToday)
+    intLastJobRow = GetLastDataRow("Current Week", 3)
     
     With Sheets("Current Week")
         Set LastUpdateCell = .Cells(8, 2)
     End With
+End Sub
+
+Sub ValidatePreviousDays()
+    'Description: Checks all previous days in the week to ensure data is present
     
-    ColumnNumber = ConvertDayToColumn(stToday)
+    'Declare booleans
+    Dim bStartTimePass As Boolean
+    Dim bMealDurationPass As Boolean
+    Dim bEndTimePass As Boolean
+    Dim bHoursPass As Boolean
     
-    'Check if previous data needs updated
-    'TODO - Probably need to differentiate between validating and updating previous data
-    'When updating for the first time/day, I want to validate all previous days in the week as a sanity check
-    'I also want to ask to update the previous work day end time even if all sanity checks pass
-    If (stDate <> Left([LastUpdateCell].Text, 10)) Then
-        ValidatePreviousDays ColumnNumber
+    'Declare integers
+    'Dim intDaysFixed As Integer
+    
+    'Declare ranges
+    Dim CheckCells As Range
+    
+    'Declare strings
+    Dim stInvalidDay As String
+    
+    'intDaysFixed = 0
+    
+    stLastUpdateDate = Left([LastUpdateCell].Text, 10)
+    
+    If (stLastUpdateDate <> stDate) Then
+        For i = 4 To intCurrentColumnNumber - 1
+            Set CheckCells = Sheets("Current Week").Cells(3, i)
+        
+            bStartTimePass = IIf([CheckCells].Text <> "", True, False)
+            
+            Set CheckCells = CheckCells.Offset(1, 0)
+            bMealDurationPass = IIf([CheckCells].Text <> "", True, False)
+            
+            Set CheckCells = CheckCells.Offset(1, 0)
+            bEndTimePass = IIf([CheckCells].Text <> "", True, False)
+            
+            Set CheckCells = Sheets("Current Week").Range(Cells(9, i), Cells(intLastJobRow, i))
+            bHoursPass = IIf(WorksheetFunction.Sum(CheckCells) <> 0, True, False)
+            
+            If ((bStartTimePass = False) Or (bMealDurationPass = False) Or (bEndTimePass = False) Or (bHoursPass = False)) Then
+                bUpdatingPreviousData = True
+                stInvalidDay = ConvertColumnToDay(i)
+                
+                resOKOnly = MsgBox(stInvalidDay & " is missing data!" & vbCrLf & _
+                    "EATS will update this data before continuing with today!", vbExclamation + vbOKOnly, "Previous Data Missing")
+                    
+                UpdateSheet i
+                'Incr intDaysFixed
+            End If
+        Next i
+        
+        bUpdatingPreviousData = False
+        
+        resYesNo = MsgBox("EATS has processed all previous entries for the week. Do you need to update your end time from yesterday?", vbQuestion + vbYesNo, "Data Validation")
+        
+        If (resYesNo = vbYes) Then
+            UpdateSheet intCurrentColumnNumber - 1
+        End If
+    End If
+End Sub
+
+Sub UpdateSheet(Optional ColumnNumber As Integer = -1)
+    'Description: Updates hours for the current day
+    
+    'Declare doubles
+    Dim dblPreviousWorkTime As Double
+    Dim dblTotalHours As Double
+    
+    'Declare integers
+    Dim intJobIndex As Integer
+    Dim intJobRow As Integer
+    Dim intLunchMinutes As Integer
+    Dim intPresentHours As Integer
+    Dim intPresentMinutes As Integer
+    Dim intTotalMinutes As Integer
+    
+    'Declare ranges
+    Dim EndTimeCell As Range 'Cell containing end time
+    Dim HoursPresentCell As Range 'Cell containing total hours present that day
+    Dim HoursWorkedTodayCell As Range 'Cell containing total hours worked that day
+    Dim JobHoursCells As Range 'Cells containing individual hours for each job
+    Dim JobHoursUpdateCell As Range 'Cell that is receiving new data
+    Dim MealDurationCell As Range 'Cell containing the meal duration
+    Dim StartTimeCell As Range 'Cell containing start time
+    
+    'Declare strings
+    Dim stTimePresent() As String
+    
+    'Set cell references
+    With Sheets("Current Week")
+        If (ColumnNumber = -1) Then
+            Set StartTimeCell = .Cells(3, intCurrentColumnNumber)
+            Set MealDurationCell = .Cells(4, intCurrentColumnNumber)
+            Set EndTimeCell = .Cells(5, intCurrentColumnNumber)
+            Set HoursPresentCell = .Cells(6, intCurrentColumnNumber)
+            Set HoursWorkedTodayCell = .Cells(7, intCurrentColumnNumber)
+            Set JobHoursCells = .Range(Cells(9, intCurrentColumnNumber), Cells(intLastJobRow, intCurrentColumnNumber))
+        Else
+            Set StartTimeCell = .Cells(3, ColumnNumber)
+            Set MealDurationCell = .Cells(4, ColumnNumber)
+            Set EndTimeCell = .Cells(5, ColumnNumber)
+            Set HoursPresentCell = .Cells(6, ColumnNumber)
+            Set HoursWorkedTodayCell = .Cells(7, ColumnNumber)
+            Set JobHoursCells = .Range(Cells(9, ColumnNumber), Cells(intLastJobRow, ColumnNumber))
+        End If
+    End With
+    
+    'Update start time cell
+    If ([StartTimeCell].Value = "") Then
+        If (ColumnNumber = -1) Then
+            stStartTime = UITimeEntry("Start Time", "What time did you clock in today?")
+        Else
+            stStartTime = UITimeEntry("Start Time", "What time did you clock in on " & ConvertColumnToDay(ColumnNumber) & "?")
+        End If
+        
+        'TODO
+        'If (work spans two dates) Then
+        '    Enter time and date
+        'Else
+        '    Enter time only
+        'End If
+        
+        [StartTimeCell].Value = stStartTime
+    End If
+    
+    'Update meal duration cell
+    If ([MealDurationCell].Value <> "") Then
+        intLunchMinutes = ([MealDurationCell].Value * 60)
+    ElseIf ((TimeValue(stUpdateTime) > TimeValue("12:00")) Or (ColumnNumber <> -1)) Then
+        If (ColumnNumber = -1) Then
+            resYesNo = MsgBox("Would you like to enter lunch time?", vbQuestion + vbYesNo, "Lunch Time Entry")
+        Else
+            resYesNo = MsgBox("Would you like to enter lunch time for " & ConvertColumnToDay(ColumnNumber) & "?", vbQuestion + vbYesNo, "Lunch Time Entry")
+        End If
+        
+        If (resYesNo = vbYes) Then
+            intLunchMinutes = UINumEntry(0, 60, "Lunch Time Entry", "Enter the time taken (in minutes) for lunch.", True, True, 30)
+            [MealDurationCell].Value = (intLunchMinutes / 60)
+        Else
+            intLunchMinutes = 0
+            
+            If (ColumnNumber = -1) Then
+                resYesNo = MsgBox("Are you taking lunch today?", vbQuestion + vbYesNo, "Lunch Time Entry")
+            Else
+                resYesNo = MsgBox("Did you take lunch on " & ConvertColumnToDay(ColumnNumber) & "?", vbQuestion + vbYesNo, "Lunch Time Entry")
+            End If
+            
+            If (resYesNo = vbNo) Then
+                [MealDurationCell].Value = intLunchMinutes
+            End If
+        End If
+    Else
+        
+    End If
+    
+    'Update end time cell
+    If (ColumnNumber <> -1) Then
+        'stEndTime = UITimeEntry("End Time", "What time did you clock out on " & ConvertColumnToDay(ColumnNumber) & "?")
+        [EndTimeCell].Value = UITimeEntry("End Time", "What time did you clock out on " & ConvertColumnToDay(ColumnNumber) & "?")
+    Else
+        [EndTimeCell].Value = stEndTime
+    End If
+    
+    'Update total hours worked today cell
+    stTimePresent = Split([HoursPresentCell].Text, ":")
+    intPresentHours = CInt(stTimePresent(0))
+    intPresentMinutes = CInt(stTimePresent(1))
+    
+    intTotalMinutes = intPresentHours * 60
+    intTotalMinutes = intTotalMinutes + intPresentMinutes
+    intTotalMinutes = intTotalMinutes - intLunchMinutes
+    
+    dblTotalHours = intTotalMinutes / 60
+    [HoursWorkedTodayCell].Value = dblTotalHours
+    
+    'Update job hours cell(s)
+    'TODO - Add option to split missing time across all jobs
+    intJobCount = GetJobCount("Current Week")
+    
+    If (intJobCount = 0) Then
+        resYesNo = MsgBox("No jobs detected, would you like to add one?", vbQuestion + vbYesNo, "Data Entry")
+        
+        If (resYesNo = vbYes) Then
+            AddJob
+            intJobIndex = 1 'Not needed for logic, just for user information
+            intJobRow = 9
+        Else
+            ErrWrite "At least one job must be present before continuing!"
+            End
+        End If
+    ElseIf (intJobCount = 1) Then
+        intJobIndex = 1 'Not needed for logic, just for user information
+        intJobRow = 9
+    Else
+        intJobIndex = UINumEntry(1, intJobCount, "Job Index Entry", "Multiple jobs detected. Please enter the index to update.", True, True)
+        intJobRow = 9 + (intJobIndex - 1)
+    End If
+    
+    If (ColumnNumber = -1) Then
+        Set JobHoursUpdateCell = Sheets("Current Week").Cells(intJobRow, intCurrentColumnNumber)
+    Else
+        Set JobHoursUpdateCell = Sheets("Current Week").Cells(intJobRow, ColumnNumber)
+    End If
+    
+    dblPreviousWorkTime = WorksheetFunction.Sum(JobHoursCells)
+    dblPreviousWorkTime = dblPreviousWorkTime - [JobHoursUpdateCell].Value
+    [JobHoursUpdateCell].Value = WorksheetFunction.Round((dblTotalHours - dblPreviousWorkTime), 2)
+    
+    'Set sheet data
+    [LastUpdateCell].Value = stDate + " " + stUpdateTime
+    
+    'Inform user and ask to save
+    resYesNo = MsgBox("Job index " & CStr(intJobIndex) & " updated!" & vbCrLf & "Would you like to save?", vbQuestion + vbYesNo, "Update Complete")
+        
+    If (resYesNo = vbYes) Then
+        ActiveWorkbook.Save
+    End If
+End Sub
+
+
+'****************************
+'****************************
+'Support Procedure Section
+'****************************
+'****************************
+
+Sub AddJob()
+    'Description: Adds a job the sheet
+    
+    'Declare integers
+    Dim lastJobRow As Integer
+    
+    'Declare ranges
+    Dim cellToUpdate As Range 'Cell that will take the new job
+    Dim dataLocation As Range 'Used in the for each loop
+    Dim jobRow As Range 'Contains job name and hours for all days
+    
+    lastJobRow = GetLastDataRow("Current Week", 3)
+    
+    Set cellToUpdate = Sheets("Current Week").Cells(lastJobRow + 1, 3)
+    Set jobRow = Sheets("Current Week").Range(Cells(lastJobRow + 1, 3), Cells(lastJobRow + 1, 11))
+    [cellToUpdate].Value = UIAlphaEntry("Job Entry", "Enter a job number", "LXC-xxx")
+    
+    For Each dataLocation In jobRow
+        With dataLocation
+            .Style = "Good"
+            .BorderAround LineStyle:=xlContinuous, Weight:=xlThin
+            .NumberFormat = "0.00"
+            If (.Column = 11) Then
+                .Formula = "=SUM(D" & CStr(cellToUpdate.Row) & ":J" & CStr(cellToUpdate.Row) & ")"
+            End If
+        End With
+    Next dataLocation
+    
+    CenterAlign "Current Week", ColumnRange:="C:K"
+    
+    If (bUpdatingPreviousData = False) Then
+        resYesNo = MsgBox([cellToUpdate].Value & " has been added to the job list!" & vbCrLf & _
+            "Would you like to update?", vbQuestion + vbYesNo, "Job Addition")
+            
+        If (resYesNo = vbYes) Then
+            UpdateSheet (intCurrentColumnNumber)
+        End If
+    End If
+End Sub
+
+Sub CenterAlign(Sheet As String, Optional ColumnRange As String = "", Optional Cell As Object = vbNull)
+    'Declare ranges
+    Dim CellsToFormat As Range
+
+    If (ColumnRange <> "") Then
+        With Sheets(Sheet)
+            Set CellsToFormat = .Range(ColumnRange)
+            CellsToFormat.HorizontalAlignment = xlCenter
+            CellsToFormat.Columns.AutoFit
+        End With
+    ElseIf (Cell <> vbNull) Then
+        Cell.HorizontalAlignment = xlCenter
+        Cell.AutoFit
+    Else
+        ErrWrite "In subprocedure CenterAlign(): Argument ""ColumnRange"" or ""Cell"" is required!"
+        End
     End If
 End Sub
 
@@ -61,200 +361,61 @@ Sub Clear(ByRef Value As Variant)
 End Sub
 
 Sub Decr(ByRef Value As Integer)
+    'Description: Decrements an integer by 1
+    
     Value = Value - 1
 End Sub
 
-Sub ErrLog(ErrName As String, DoNotContinue As Boolean)
-    'For logging pre-defined errors
-End Sub
-
 Sub ErrWrite(ByVal Message As String)
-    'For writing custom errors in-line
+    'Description: Used to show a custom error message
     
     resOKOnly = MsgBox(Message, vbCritical + vbOKOnly, stError)
 End Sub
 
-Sub FixPreviousDays(Row As Integer, Column As Integer)
-    'Declare strings
-    Dim stData As String
-    Dim stDay As String
-    
-    Select Case Row
-    Case 3
-        stData = "start time"
-    Case 4
-        stData = "meal duration"
-    Case 5
-        stData = "end time"
-    Case Else
-        ErrWrite "Error with select case statement. Row number invalid."
-        End
-    End Select
-    
-    stDay = ConvertColumnToDay(Column)
-    
-    Sheets("Current Week").Cells(Row, Column).Value = UITimeEntry("Fix Data!", "Data for " & stData & " on " & stDay & " is missing!" & vbCrLf & "Please enter the data to proceed!")
-End Sub
-
 Sub Incr(ByRef Value As Integer)
+    'Description: Increments an integer by 1
+    
     Value = Value + 1
-End Sub
-
-Sub InitData()
-    
-End Sub
-
-Sub UpdateSheet(ColumnNumber As Integer, EndTime As String)
-    'Declare doubles
-    Dim PreviousWorkHours As Double
-    Dim WorkingHours As Double
-
-    'Declare integers
-    Dim JobCount As Integer
-    Dim JobIndex As Integer
-    Dim JobOffset As Integer
-    Dim LastJobRow As Integer
-    Dim LunchMinutes As Integer
-    Dim TotalMinutes As Integer
-    
-    'Declare ranges
-    Dim CurrentJobCell As Range
-    Dim EndTimeCell As Range
-    Dim FirstJobCell As Range
-    Dim HourEntryCell As Range
-    Dim HoursWorkedCell As Range
-    Dim JobHoursRange As Range
-    Dim MealTimeCell As Range
-    Dim StartTimeCell As Range
-    Dim TotalHoursCell As Range
-    
-    'Declare strings
-    Const stDefaultProjectNumber As String = "LXC-xxx"
-    Const stNoJobsError As String = "No jobs present to track hours for! At least one job number must be added."
-    Dim stStartTime As String
-    Dim stTotalHours As String
-    Dim stTotalHoursSplit() As String
-    
-    With Sheets("Current Week")
-        Set StartTimeCell = .Cells(3, ColumnNumber)
-        Set MealTimeCell = .Cells(4, ColumnNumber)
-        Set EndTimeCell = .Cells(5, ColumnNumber)
-        Set TotalHoursCell = .Cells(6, ColumnNumber)
-        Set HoursWorkedCell = .Cells(7, ColumnNumber)
-        Set FirstJobCell = .Cells(9, 3)
-    End With
-    
-    JobCount = GetJobCount("Current Week")
-    
-    If (JobCount = 0) Then
-        resYesNo = MsgBox("No jobs detected, would you like to add one?", vbQuestion + vbYesNo, "Data Entry")
-        
-        If (resYesNo = vbYes) Then
-            [FirstJobCell].Value = UIAlphaEntry("Job Entry", "Enter a project number", stDefaultProjectNumber)
-            JobIndex = 1
-            Set CurrentJobCell = FirstJobCell
-        Else
-            ErrWrite stNoJobsError
-            End
-        End If
-    ElseIf (JobCount = 1) Then
-        JobIndex = 1
-        Set CurrentJobCell = FirstJobCell
-    Else
-        Do
-            JobIndex = UINumEntry(1, JobCount, "Job Index Entry", "Multiple jobs detected. Enter the index to update.", True, True)
-            
-            If (JobIndex > JobCount) Then
-                ErrWrite "The entered job index exceeds the current job count!"
-                End
-            End If
-            
-            JobOffset = (JobIndex - 1) 'JobOffset of 0 equals first job, JobOffset of 1 equals second job, etc.
-            Set CurrentJobCell = FirstJobCell.Offset(JobOffset, 0)
-        Loop Until (JobIndex <= JobCount)
-    End If
-    
-    'Determine which cell is receiving hours update
-    Set HourEntryCell = Sheets("Current Week").Cells([CurrentJobCell].Row, ColumnNumber)
-    
-    'Update start time
-    If ([StartTimeCell].Value = stEmpty) Then
-        stStartTime = UITimeEntry("Start Time", "Enter the time at which you started working" & vbCrLf & "Format: ""hh:mm""")
-    End If
-    
-    'Update meal duration
-    If ([MealTimeCell].Value <> stEmpty) Then
-        LunchMinutes = ([MealTimeCell].Value * 60) 'Conversion from decimal time to minutes
-        'TODO - Fix ElseIf expression below. TimeValue argument on right side of operand should not be hard-coded
-    ElseIf (TimeValue(EndTime) > TimeValue("12:00")) Then
-        resYesNo = MsgBox("Would you like to enter lunch time?", vbQuestion + vbYesNo, "Lunch Time Entry")
-        
-        If (resYesNo = vbYes) Then
-            LunchMinutes = UINumEntry(0, 60, "Lunch Time Entry", "Enter the time taken (in minutes) for lunch.", True, True, 30)
-            [MealTimeCell].Value = (LunchMinutes / 60) 'Conversion from minutes to decimal time
-        Else
-            LunchMinutes = 0
-            
-            resYesNo = MsgBox("Are you taking lunch today?", vbQuestion + vbYesNo, "Lunch Time Entry")
-            
-            If (resYesNo = vbNo) Then
-                'Not taking lunch for the day. Enter 0 to prevent checking on future updates
-                [MealTimeCell].Value = LunchMinutes
-            End If
-        End If
-    End If
-    
-    'Update end time
-    [EndTimeCell].Value = EndTime
-    
-    'Grab total hours for evaluation
-    stTotalHours = [TotalHoursCell].Text
-    
-    'Convert to decimal time
-    stTotalHoursSplit = Split(stTotalHours, ":") 'Index 0 = hours, index 1 = minutes
-    TotalMinutes = (stTotalHoursSplit(0) * 60)
-    TotalMinutes = (TotalMinutes + stTotalHoursSplit(1))
-    TotalMinutes = (TotalMinutes - LunchMinutes)
-    
-    WorkingHours = (TotalMinutes / 60)
-    [HoursWorkedCell].Value = WorkingHours
-    
-    'Determine delta between last update and now
-    LastJobRow = GetLastDataRow("Current Week", 3)
-    Set JobHoursRange = Sheets("Current Week").Range(Cells([FirstJobCell].Row, ColumnNumber), Cells(LastJobRow, ColumnNumber))
-    PreviousWorkHours = WorksheetFunction.Sum(JobHoursRange)
-    PreviousWorkHours = (PreviousWorkHours - [HourEntryCell].Value)
-    [HourEntryCell].Value = WorksheetFunction.Round((WorkingHours - PreviousWorkHours), 2)
-End Sub
-
-Sub ValidatePreviousDays(CurrentColumn As Integer)
-    'Declare integers
-    Dim i As Integer
-    Dim j As Integer
-
-    'Declare ranges
-    Dim CheckCell As Range
-    
-    With Sheets("Current Week")
-        Set CheckCell = .Cells(3, 4)
-        
-        For i = CheckCell.Column To (CurrentColumn - 1)
-            For j = CheckCell.Row To 5
-                If (.Cells(j, i).Value = stEmpty) Then
-                    FixPreviousDays j, i
-                End If
-            Next j
-        Next i
-    End With
 End Sub
 
 Sub WriteLineToTxtFile(FilePath As String, ByVal Message As String)
     'Declare integers
     Dim fileNum As Integer
     
+    If (Dir(FilePath) = "") Then
+        resYesNo = MsgBox("The specified text file could not be found." & vbCrLf & _
+            "Do you want to continue by creating the file below?" & vbCrLf & _
+            FilePath, vbExclamation + vbYesNo, "File Not Found")
+            
+        If (resYesNo = vbNo) Then
+            End
+        End If
+    End If
+    
     fileNum = FreeFile
     
     Open FilePath For Append Access Write As #fileNum
     Print #fileNum, Message
     Close #fileNum
+End Sub
+
+'****************************
+'****************************
+'Testing Section
+'****************************
+'****************************
+
+Sub ReadXML()
+    Dim XDoc As Object, root As Object
+    Dim NodeObject As Object
+    Dim FieldNode As Object
+    
+    Set XDoc = CreateObject("MSXML2.DOMDocument")
+    XDoc.async = False: XDoc.validateOnParse = False
+    XDoc.Load ("C:\Users\GrantMumaugh\Documents\Spreadsheets\EATS\Support Files\Options.xml")
+    Set root = XDoc.DocumentElement
+    
+    For Each NodeObject In root.ChildNodes
+        
+    Next NodeObject
 End Sub

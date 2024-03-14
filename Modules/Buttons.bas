@@ -2,5 +2,9 @@ Attribute VB_Name = "Buttons"
 Option Explicit
 
 Sub UpdateButton_Clicked()
-    CheckSheet
+    SheetSequencer
+End Sub
+
+Sub AddJobButton_Clicked()
+    AddJob
 End Sub

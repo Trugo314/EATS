@@ -3,6 +3,8 @@ Attribute VB_Name = "Globals"
 Public Const bAlwaysFalse As Boolean = False
 
 'Declare integers
+Public i As Integer 'For for loops
+Public k As Integer 'For for loops
 Public resOKOnly As Integer
 Public resYesNo As Integer
 

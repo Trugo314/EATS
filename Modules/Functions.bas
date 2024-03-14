@@ -52,6 +52,16 @@ Function ConvertTxtFileToStringArray(ByVal FilePath As String, ByVal Delimiter A
     'Declare strings
     Dim fileContents As String
     
+    If (Dir(FilePath) = "") Then
+        resYesNo = MsgBox("The specified text file could not be found." & vbCrLf & _
+            "Do you want to continue by creating the file below?" & vbCrLf & _
+            FilePath, vbExclamation + vbYesNo, "File Not Found")
+            
+        If (resYesNo = vbNo) Then
+            End
+        End If
+    End If
+    
     fileNum = FreeFile
     
     Open FilePath For Binary Access Read As #fileNum
@@ -73,6 +83,10 @@ Function FileSelector(Optional FilterList As String = "") As String
     Else
         FileSelector = FilePath
     End If
+End Function
+
+Public Function GetDocumentsDir() As String
+    GetDocumentsDir = Environ$("USERPROFILE") & "\Documents\"
 End Function
 
 Public Function GetJobCount(SheetName As String) As Integer
