@@ -33,11 +33,9 @@ Dim stUpdateTime As String
 '****************************
 
 Sub SheetSequencer()
-    ' 1.)Get info for today
-    ' 2.)Check previous days for valid data
-    ' 3.)Ask to update previous day
-    ' 4.)Shift data if necessary
-    ' 5.)Update today
+    '\ Description: Calls each subprocedure in order
+    '\ Modified:    2024-14-03
+    '\ Version:     1.0
     
     InitDay
     ValidatePreviousDays
@@ -45,8 +43,9 @@ Sub SheetSequencer()
 End Sub
 
 Sub InitDay()
-    'Description: Initializes all data to be used for the current day.
-    'Also needed to reference previous days
+    '\ Description: Initializes the day-to-day data used by the other subprocedures
+    '\ Modified:    2024-14-03
+    '\ Version:     1.3
     
     stDocumentsDir = GetDocumentsDir
     stLogFilePath = stDocumentsDir & stSupportFilesDir & stLogFileName
@@ -69,7 +68,9 @@ End Sub
 
 'TODO - This needs reworked
 Sub ValidatePreviousDays()
-    'Description: Checks all previous days in the week to ensure data is present
+    '\ Description: Checks previous days of the week and ensures start time, meal time, end time, and tracked hours are present
+    '\ Modified:    2024-18-03
+    '\ Version:     1.1
     
     'Declare booleans
     Dim bStartTimePass As Boolean
@@ -135,7 +136,9 @@ Sub ValidatePreviousDays()
 End Sub
 
 Sub UpdateSheet(Optional ColumnNumber As Integer = -1)
-    'Description: Updates hours for the current day
+    '\ Description: Updates all needed data for the day
+    '\ Modified:    2024-19-03
+    '\ Version:     1.3
     
     'Declare doubles
     Dim dblPreviousWorkTime As Double
@@ -292,6 +295,10 @@ Sub UpdateSheet(Optional ColumnNumber As Integer = -1)
 End Sub
 
 Sub ShiftData(WeeksToShift As Integer)
+    '\ Description: Moves data when a new week is detected
+    '\ Modified:    2024-18-03
+    '\ Version:     1.0
+
     If (WeeksToShift >= 3) Then
         'Remove all data
         ClearAllSheets
@@ -304,18 +311,25 @@ Sub ShiftData(WeeksToShift As Integer)
         CopyDataToSheet "1 Week Ago", "2 Weeks Ago"
         CopyDataToSheet "Current Week", "1 Week Ago"
         ClearDataFromSheet "Current Week"
-    Else
-        
     End If
 End Sub
 
 Sub ClearAllSheets()
+    '\ Description: Removes all data from all sheets
+    '\ Modified:    2024-18-03
+    '\ Version:     1.0
+
     ClearDataFromSheet "Current Week"
     ClearDataFromSheet "1 Week Ago"
     ClearDataFromSheet "2 Weeks Ago"
 End Sub
 
 Sub ClearDataFromSheet(SheetName As String)
+    '\ Description: Clears data from the provided sheet
+    '\ SheetName:   Name of the sheet to clear data from
+    '\ Modified:    2024-18-03
+    '\ Version:     1.0
+
     'Declare objects
     Dim DataLocation As Object
     
@@ -350,6 +364,12 @@ Sub ClearDataFromSheet(SheetName As String)
 End Sub
 
 Sub CopyDataToSheet(FromSheetName As String, ToSheetName As String)
+    '\ Description:     Copies data from from the first sheet and pastes it to the second sheet
+    '\ FromSheetName:   Sheet to copy data from
+    '\ ToSheetName:     Sheet to paste data to
+    '\ Modified:        2024-18-03
+    '\ Version:         1.0
+
     'Declare objects
     Dim DataLocation As Object
     
@@ -373,7 +393,10 @@ End Sub
 '****************************
 
 Sub AddJob(Optional InhibitUpdate As Boolean = False)
-    'Description: Adds a job the sheet
+    '\ Description:     Adds a job to the job list to be used for tracking hours
+    '\ InhibitUpdate:   Prevents the program from calling UpdateSheet after job has been added
+    '\ Modified:        2024-19-03
+    '\ Version:         1.1
     
     'Declare integers
     Dim lastJobRow As Integer
@@ -413,6 +436,13 @@ Sub AddJob(Optional InhibitUpdate As Boolean = False)
 End Sub
 
 Sub CenterAlign(Sheet As String, Optional ColumnRange As String = "", Optional Cell As Object = vbNull)
+    '\ Description: Formats the provided cells with center alignment and autofit
+    '\ Sheet:       Sheet to apply formatting to
+    '\ ColumnRange: A set of columns to apply formatting for
+    '\ Cell:        A single cell to apply formatting for
+    '\ Modified:    2024-18-03
+    '\ Version:     1.1
+
     'Declare ranges
     Dim CellsToFormat As Range
 
@@ -431,37 +461,57 @@ Sub CenterAlign(Sheet As String, Optional ColumnRange As String = "", Optional C
     End If
 End Sub
 
-Sub Clear(ByRef Value As Variant)
-    If ((VarType(Value) <> vbInteger) And _
-    (VarType(Value) <> vbLong) And _
-    (VarType(Value) <> vbSingle) And _
-    (VarType(Value) <> vbDouble) And _
-    (VarType(Value) <> vbDecimal)) Then
-        ErrWrite "Error in subprocedure Clear()" & vbCrLf & "Variable type " & CStr(VarType(Value)) & " is not a numeric type."
+Sub Clear(ByRef Name As Variant)
+    '\ Description: Sets the value of a numeric variable to 0
+    '\ ByRef Name:  The name of the variable to be cleared
+    '\ Modified:    2024-19-03
+    '\ Version:     1.1
+
+    If ((VarType(Name) <> vbInteger) And _
+    (VarType(Name) <> vbLong) And _
+    (VarType(Name) <> vbSingle) And _
+    (VarType(Name) <> vbDouble) And _
+    (VarType(Name) <> vbDecimal)) Then
+        ErrWrite "Error in subprocedure Clear()" & vbCrLf & "Variable type " & CStr(VarType(Name)) & " is not a numeric type."
     Else
-        Value = 0
+        Name = 0
     End If
 End Sub
 
-Sub Decr(ByRef Value As Integer)
-    'Description: Decrements an integer by 1
+Sub Decr(ByRef Name As Integer)
+    '\ Description: Decrements a value by 1
+    '\ ByRef Name:  The name of the variable to be incremented
+    '\ Modified:    2024-19-03
+    '\ Version:     1.1
     
-    Value = Value - 1
+    Name = Name - 1
 End Sub
 
 Sub ErrWrite(ByVal Message As String)
-    'Description: Used to show a custom error message
+    '\ Description: Presents a message box with error symbol and message
+    '\ Message:     The text that will appear in the main window of the message box
+    '\ Modified:    2023-15-11
+    '\ Version:     1.0
     
     resOKOnly = MsgBox(Message, vbCritical + vbOKOnly, stError)
 End Sub
 
-Sub Incr(ByRef Value As Integer)
-    'Description: Increments an integer by 1
+Sub Incr(ByRef Name As Integer)
+    '\ Description: Increments a value by 1
+    '\ Name:        The name of the variable to be decremented
+    '\ Modified:    2024-19-03
+    '\ Version:     1.0
     
-    Value = Value + 1
+    Name = Name + 1
 End Sub
 
 Sub WriteLineToTxtFile(FilePath As String, ByVal Message As String)
+    '\ Description: Writes a line of text to a text file
+    '\ FilePath:    The path of the file to output to
+    '\ Message:     The text that will be written to the file. A newline character is automatically added
+    '\ Modified:    2024-19-03
+    '\ Version:     1.0
+
     'Declare integers
     Dim fileNum As Integer
     
