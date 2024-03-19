@@ -11,6 +11,7 @@ Dim intWeekNum As Integer
 
 'Declare ranges
 Dim LastUpdateCell As Range
+Dim WeekNumberCell As Range
 
 'Declare strings
 Const stLogFileName As String = "programlog.txt"
@@ -62,9 +63,11 @@ Sub InitDay()
     
     With Sheets("Current Week")
         Set LastUpdateCell = .Cells(8, 2)
+        Set WeekNumberCell = .Cells(5, 2)
     End With
 End Sub
 
+'TODO - This needs reworked
 Sub ValidatePreviousDays()
     'Description: Checks all previous days in the week to ensure data is present
     
@@ -76,6 +79,7 @@ Sub ValidatePreviousDays()
     
     'Declare integers
     'Dim intDaysFixed As Integer
+    Dim intWeeksToShift As Integer
     
     'Declare ranges
     Dim CheckCells As Range
@@ -84,10 +88,16 @@ Sub ValidatePreviousDays()
     Dim stInvalidDay As String
     
     'intDaysFixed = 0
+    'TODO - New year will break this
+    If (intWeekNum <> [WeekNumberCell].Value) Then
+        intWeeksToShift = intWeekNum - [WeekNumberCell].Value
+        ShiftData intWeeksToShift
+        Exit Sub 'Temporary fix for checking after shifting?
+    End If
     
     stLastUpdateDate = Left([LastUpdateCell].Text, 10)
     
-    If (stLastUpdateDate <> stDate) Then
+    If ((stLastUpdateDate <> stDate) And (stToday <> "Monday")) Then
         For i = 4 To intCurrentColumnNumber - 1
             Set CheckCells = Sheets("Current Week").Cells(3, i)
         
@@ -214,8 +224,6 @@ Sub UpdateSheet(Optional ColumnNumber As Integer = -1)
                 [MealDurationCell].Value = intLunchMinutes
             End If
         End If
-    Else
-        
     End If
     
     'Update end time cell
@@ -246,7 +254,7 @@ Sub UpdateSheet(Optional ColumnNumber As Integer = -1)
         resYesNo = MsgBox("No jobs detected, would you like to add one?", vbQuestion + vbYesNo, "Data Entry")
         
         If (resYesNo = vbYes) Then
-            AddJob
+            AddJob True
             intJobIndex = 1 'Not needed for logic, just for user information
             intJobRow = 9
         Else
@@ -273,6 +281,7 @@ Sub UpdateSheet(Optional ColumnNumber As Integer = -1)
     
     'Set sheet data
     [LastUpdateCell].Value = stDate + " " + stUpdateTime
+    [WeekNumberCell].Value = intWeekNum
     
     'Inform user and ask to save
     resYesNo = MsgBox("Job index " & CStr(intJobIndex) & " updated!" & vbCrLf & "Would you like to save?", vbQuestion + vbYesNo, "Update Complete")
@@ -282,6 +291,80 @@ Sub UpdateSheet(Optional ColumnNumber As Integer = -1)
     End If
 End Sub
 
+Sub ShiftData(WeeksToShift As Integer)
+    If (WeeksToShift >= 3) Then
+        'Remove all data
+        ClearAllSheets
+    ElseIf (WeeksToShift = 2) Then
+        ClearDataFromSheet "2 Weeks Ago"
+        ClearDataFromSheet "1 Week Ago"
+        CopyDataToSheet "Current Week", "2 Weeks Ago"
+    ElseIf (WeeksToShift = 1) Then
+        ClearDataFromSheet "2 Weeks Ago"
+        CopyDataToSheet "1 Week Ago", "2 Weeks Ago"
+        CopyDataToSheet "Current Week", "1 Week Ago"
+        ClearDataFromSheet "Current Week"
+    Else
+        
+    End If
+End Sub
+
+Sub ClearAllSheets()
+    ClearDataFromSheet "Current Week"
+    ClearDataFromSheet "1 Week Ago"
+    ClearDataFromSheet "2 Weeks Ago"
+End Sub
+
+Sub ClearDataFromSheet(SheetName As String)
+    'Declare objects
+    Dim DataLocation As Object
+    
+    'Declare strings
+    Const ShiftRange1 As String = "D3:J5" 'Start time, meal duration, end time
+    Const ShiftRange2 As String = "D7:J7" 'Hours worked
+    Dim ShiftRange3 As String 'Jobs and hours
+    
+    ShiftRange3 = "C9:K" & CStr(intLastJobRow)
+
+    With Sheets(SheetName)
+        For Each DataLocation In .Range(ShiftRange1)
+            If ([DataLocation].Value <> "") Then
+                [DataLocation].Value = ""
+            End If
+        Next
+        
+        For Each DataLocation In .Range(ShiftRange2)
+            If ([DataLocation].Value <> "") Then
+                [DataLocation].Value = ""
+            End If
+        Next
+        
+        For Each DataLocation In .Range(ShiftRange3)
+            If ([DataLocation].Value <> "") Then
+                [DataLocation].Value = ""
+            End If
+        Next
+        
+        .Range(ShiftRange3).Style = "Normal"
+    End With
+End Sub
+
+Sub CopyDataToSheet(FromSheetName As String, ToSheetName As String)
+    'Declare objects
+    Dim DataLocation As Object
+    
+    'Declare strings
+    Const ShiftRange1 As String = "D3:J5" 'Start time, meal duration, end time
+    Const ShiftRange2 As String = "D7:J7" 'Hours worked
+    Dim ShiftRange3 As String 'Jobs and hours
+    
+    ShiftRange3 = "C9:K" & CStr(intLastJobRow)
+    
+    Sheets(FromSheetName).Range(ShiftRange1).Copy Destination:=Sheets(ToSheetName).Range(ShiftRange1)
+    Sheets(FromSheetName).Range(ShiftRange2).Copy Destination:=Sheets(ToSheetName).Range(ShiftRange2)
+    Sheets(FromSheetName).Range(ShiftRange3).Copy Destination:=Sheets(ToSheetName).Range(ShiftRange3)
+End Sub
+
 
 '****************************
 '****************************
@@ -289,7 +372,7 @@ End Sub
 '****************************
 '****************************
 
-Sub AddJob()
+Sub AddJob(Optional InhibitUpdate As Boolean = False)
     'Description: Adds a job the sheet
     
     'Declare integers
@@ -297,7 +380,7 @@ Sub AddJob()
     
     'Declare ranges
     Dim cellToUpdate As Range 'Cell that will take the new job
-    Dim dataLocation As Range 'Used in the for each loop
+    Dim DataLocation As Range 'Used in the for each loop
     Dim jobRow As Range 'Contains job name and hours for all days
     
     lastJobRow = GetLastDataRow("Current Week", 3)
@@ -306,8 +389,8 @@ Sub AddJob()
     Set jobRow = Sheets("Current Week").Range(Cells(lastJobRow + 1, 3), Cells(lastJobRow + 1, 11))
     [cellToUpdate].Value = UIAlphaEntry("Job Entry", "Enter a job number", "LXC-xxx")
     
-    For Each dataLocation In jobRow
-        With dataLocation
+    For Each DataLocation In jobRow
+        With DataLocation
             .Style = "Good"
             .BorderAround LineStyle:=xlContinuous, Weight:=xlThin
             .NumberFormat = "0.00"
@@ -315,11 +398,11 @@ Sub AddJob()
                 .Formula = "=SUM(D" & CStr(cellToUpdate.Row) & ":J" & CStr(cellToUpdate.Row) & ")"
             End If
         End With
-    Next dataLocation
+    Next DataLocation
     
     CenterAlign "Current Week", ColumnRange:="C:K"
     
-    If (bUpdatingPreviousData = False) Then
+    If ((bUpdatingPreviousData = False) And (InhibitUpdate = False)) Then
         resYesNo = MsgBox([cellToUpdate].Value & " has been added to the job list!" & vbCrLf & _
             "Would you like to update?", vbQuestion + vbYesNo, "Job Addition")
             
