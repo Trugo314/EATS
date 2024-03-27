@@ -309,6 +309,7 @@ Sub ShiftData(WeeksToShift As Integer)
     ElseIf (WeeksToShift = 1) Then
         ClearDataFromSheet "2 Weeks Ago"
         CopyDataToSheet "1 Week Ago", "2 Weeks Ago"
+        ClearDataFromSheet "1 Week Ago"
         CopyDataToSheet "Current Week", "1 Week Ago"
         ClearDataFromSheet "Current Week"
     End If
@@ -329,6 +330,9 @@ Sub ClearDataFromSheet(SheetName As String)
     '\ SheetName:   Name of the sheet to clear data from
     '\ Modified:    2024-18-03
     '\ Version:     1.0
+    
+    'Declare integers
+    Dim intLocalLastJobRow
 
     'Declare objects
     Dim DataLocation As Object
@@ -338,7 +342,12 @@ Sub ClearDataFromSheet(SheetName As String)
     Const ShiftRange2 As String = "D7:J7" 'Hours worked
     Dim ShiftRange3 As String 'Jobs and hours
     
-    ShiftRange3 = "C9:K" & CStr(intLastJobRow)
+    intLocalLastJobRow = GetLastDataRow(SheetName, 3)
+    If (intLocalLastJobRow = 8) Then
+        Exit Sub
+    End If
+    
+    ShiftRange3 = "C9:K" & CStr(intLocalLastJobRow)
 
     With Sheets(SheetName)
         For Each DataLocation In .Range(ShiftRange1)
@@ -370,6 +379,9 @@ Sub CopyDataToSheet(FromSheetName As String, ToSheetName As String)
     '\ Modified:        2024-18-03
     '\ Version:         1.0
 
+    'Declare integers
+    Dim intLocalLastJobRow
+
     'Declare objects
     Dim DataLocation As Object
     
@@ -378,11 +390,18 @@ Sub CopyDataToSheet(FromSheetName As String, ToSheetName As String)
     Const ShiftRange2 As String = "D7:J7" 'Hours worked
     Dim ShiftRange3 As String 'Jobs and hours
     
-    ShiftRange3 = "C9:K" & CStr(intLastJobRow)
+    intLocalLastJobRow = GetLastDataRow(FromSheetName, 3)
+    If (intLocalLastJobRow = 8) Then
+        Exit Sub
+    End If
+    
+    ShiftRange3 = "C9:K" & CStr(intLocalLastJobRow)
     
     Sheets(FromSheetName).Range(ShiftRange1).Copy Destination:=Sheets(ToSheetName).Range(ShiftRange1)
     Sheets(FromSheetName).Range(ShiftRange2).Copy Destination:=Sheets(ToSheetName).Range(ShiftRange2)
     Sheets(FromSheetName).Range(ShiftRange3).Copy Destination:=Sheets(ToSheetName).Range(ShiftRange3)
+    
+    Sheets(ToSheetName).Cells(7, 11).Formula = "=SUM(K9:K" & CStr(intLocalLastJobRow)
 End Sub
 
 

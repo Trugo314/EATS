@@ -18,7 +18,7 @@ Function ConvertColumnToDay(ColumnNumber As Integer) As String
     Case 10
         ConvertColumnToDay = "Sunday"
     Case Else
-        ErrWrite "Error with select case statement. No case matches " & ColumnNumber
+        ErrWrite "Error with select case statement. No case matches " & CStr(ColumnNumber)
         End
     End Select
 End Function
