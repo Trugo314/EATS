@@ -388,7 +388,9 @@ Sub CopyDataToSheet(FromSheetName As String, ToSheetName As String)
     'Declare strings
     Const ShiftRange1 As String = "D3:J5" 'Start time, meal duration, end time
     Const ShiftRange2 As String = "D7:J7" 'Hours worked
+    Const strTotalHoursCell As String = "K9"
     Dim ShiftRange3 As String 'Jobs and hours
+    Dim strSumFormula As String
     
     intLocalLastJobRow = GetLastDataRow(FromSheetName, 3)
     If (intLocalLastJobRow = 8) Then
@@ -396,12 +398,13 @@ Sub CopyDataToSheet(FromSheetName As String, ToSheetName As String)
     End If
     
     ShiftRange3 = "C9:K" & CStr(intLocalLastJobRow)
+    strSumFormula = "=SUM(K9:K" & CStr(intLocalLastJobRow) & ")"
     
     Sheets(FromSheetName).Range(ShiftRange1).Copy Destination:=Sheets(ToSheetName).Range(ShiftRange1)
     Sheets(FromSheetName).Range(ShiftRange2).Copy Destination:=Sheets(ToSheetName).Range(ShiftRange2)
     Sheets(FromSheetName).Range(ShiftRange3).Copy Destination:=Sheets(ToSheetName).Range(ShiftRange3)
     
-    Sheets(ToSheetName).Cells(7, 11).Formula = "=SUM(K9:K" & CStr(intLocalLastJobRow)
+    Worksheets(ToSheetName).Range(strTotalHoursCell).Formula = strSumFormula
 End Sub
 
 
